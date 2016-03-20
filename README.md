@@ -5,12 +5,12 @@ php的http类，其中的request异步并发请求支持apache和nginx。
   
   使用方法:
   
-  $myHttp  = new myHttp();
+  $http  = new LkkHttp();
   
-  $get     = $myHttp->get('http://www.oschina.net/');
+  $get     = $http->get('http://www.oschina.net/');
   
-  $code    = $myHttp->getHttpStatusCode('http://www.oschina.net/');
+  $code    = $http->getHttpStatusCode('http://www.oschina.net/');
   
-  $request = $myHttp->request('http://www.oschina.net/');
+  $request = $http->request('http://www.oschina.net/');
   
-  $file    = $myHttp->save('http://www.oschina.net/', __DIR__);
+  $file    = $http->save('http://www.oschina.net/', __DIR__);
