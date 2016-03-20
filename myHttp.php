@@ -1,13 +1,15 @@
 <?php
 /**
  * Created by PhpStorm.
- * User: LKK/lianq.net
- * Date: 2015/3/12
- * Time: 18:20
+ * User: lkk/lianq.net
+ * Date: 2015/7/19
+ * Time: 19:03
  * Desc: lkk`s http异步请求类
+ * Version: 0.1
  */
 
-class myHttp {
+class LkkHttp {
+    public		$param		= array();	//构造函数参数
     public		$url		= '';		//传入的完整请求url,包括"http://"
     public 		$get		= array();	//传入的get数组,须是键值对
     public		$post		= array();	//传入的post数组,须是键值对
@@ -15,7 +17,6 @@ class myHttp {
     public		$timeOut	= 30;		//请求超时秒数
     public		$timeLimit	= 0;		//脚本执行时间限制
     public		$result		= '';		//获取到的数据
-
     private		$gzip		= true;		//是否开启gzip压缩
     private		$fop		= null;		//fsockopen资源句柄
     private		$host		= '';		//主机
@@ -27,28 +28,35 @@ class myHttp {
     private		$block		= 1;		//网络流状态.1为阻塞,0为非阻塞
     private		$limit		= 128;		//读取的最大字节数
     private		$redirect	= 0;		//重定向次数
+    private		$contType	= '';		//HTTP头:Content Type
 
 
     /**
      * 构造函数
-     * @param int $timeOut 请求超时秒数
-     * @param int $timeLimit 脚本执行时间限制
+     * @param array $param
+     * timeOut 请求超时秒数
+     * timeLimit 脚本执行时间限制
+     * randomAgent 0源客户端,1随机,其他为自定义
+     *
      */
-    public function __construct($timeOut=30,$timeLimit=0){
+    public function __construct($param=array('timeOut'=>30, 'timeLimit'=>0, 'randomAgent'=>1)) {
         ignore_user_abort(true);//如果客户端断开连接,不会引起脚本abort
 
-        if($timeOut >0) $this->timeOut = $timeOut;
-        if($timeLimit >0){
-            set_time_limit($timeLimit);
+        if(!isset($param['timeOut'])) $param['timeOut'] = 30;
+        if(!isset($param['timeLimit'])) $param['timeOut'] = 0;
+        if(!isset($param['randomAgent'])) $param['timeOut'] = 1;
+
+        if($param['timeOut'] >0) {
+            $this->timeOut = $param['timeOut'];
+        }
+
+        if($param['timeLimit'] >0) {
+            set_time_limit($param['timeLimit']);
         }else{
             set_time_limit(0);//取消脚本执行延时上限
         }
 
-        if(isset($_SERVER['HTTP_USER_AGENT'])){
-            $this->agent = $_SERVER['HTTP_USER_AGENT'];
-        }else{
-            $this->agent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:36.0) Gecko/20100101 Firefox/36.0';
-        }
+        $this->param = $param;
     }
 
 
@@ -82,8 +90,54 @@ class myHttp {
                 $res[] = "{$k}=" .strval($v);
             }
         }
-
         return implode("&", $res);
+    }
+
+
+    /**
+     * 设置referer
+     * @param $referer
+     */
+    public function setReferer($referer){
+        $this->referer = $referer;
+    }
+
+
+    /**
+     * 设置ContentType
+     * @param $type
+     */
+    public function setContentType($type){
+        $this->contType = $type;
+    }
+
+
+    /**
+     * 设置agent
+     * @param string $agent
+     */
+    public function setAgent($agent='') {
+        if(!empty($agent)) {
+            $this->agent = $this->param['randomAgent'] = $agent;
+        }else{
+            $agentArr = array(
+                'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:41.0) Gecko/20100101 Firefox/41.0',
+                'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0',
+                'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36',
+                'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)',
+            );
+
+            if($this->param['randomAgent']==1) {
+                $ind = rand(0,3);
+                $this->agent = $agentArr[$ind];
+            }elseif($this->param['randomAgent']==0 && isset($_SERVER['HTTP_USER_AGENT'])) {
+                $this->agent = $_SERVER['HTTP_USER_AGENT'];
+            }elseif($this->param['randomAgent']!=''){
+                $this->agent = $this->param['randomAgent'];
+            }else{
+                $this->agent = $agentArr[0];
+            }
+        }
     }
 
 
@@ -93,26 +147,22 @@ class myHttp {
      */
     private function _analyzeUrl(){
         if(empty($this->url)) return false;
-
         $urlArray = parse_url($this->url);
         if(!isset($urlArray['scheme']) || !isset($urlArray['host'])){
             return false;//URL非法
         }
-
         !isset($urlArray['host'])  && $urlArray['host'] = '';
         !isset($urlArray['path'])  && $urlArray['path'] = '';
         !isset($urlArray['query']) && $urlArray['query'] = '';
         !isset($urlArray['port'])  && $urlArray['port'] = 80;
-
         //get参数
         if(!empty($this->get)){
             $getQuery = self::_buidQuery($this->get);
             $urlArray['query'] = empty($urlArray['query']) ? $getQuery : $urlArray['query'] .'&'.$getQuery;
         }
-
         $this->host			= $urlArray['host'];
         $this->port			= $urlArray['port'];
-        $this->referer		= $urlArray['scheme'] .'://'.$this->host .'/';
+        $this->referer		= empty($this->referer) ? $urlArray['scheme'] .'://'.$this->host .'/' : $this->referer;
         $this->requestUri	= $urlArray['path'] ? $urlArray['path'].($urlArray['query'] ? '?'.$urlArray['query'] : '') : '/';
         $this->fop			= fsockopen($this->host, $this->port, $errno, $errstr, $this->timeOut);
         if(!$this->fop){
@@ -120,6 +170,7 @@ class myHttp {
             return false;
         }
 
+        $this->setAgent();
         return true;
     }
 
@@ -131,26 +182,25 @@ class myHttp {
     private function _assemblyHeader(){
         $method = empty($this->post) ? 'GET' : 'POST';
         $gzip = $this->gzip ? 'gzip, ' : '';
-
         //cookie数据
         if(is_array($this->cookie)){
             if(function_exists('http_build_cookie')){//需安装pecl_http
                 $this->cookie = http_build_cookie($this->cookie);
             }else $this->cookie = self::_buildCookie($this->cookie);
         }else $this->cookie = strval($this->cookie);
-
         //post数据
         if(is_array($this->post)){
             if(function_exists('http_build_query')){
                 $this->post = http_build_query($this->post);
             }else $this->post = self::_buidQuery($this->post);
         }else $this->post = strval($this->post);
-
         $header	= "$method $this->requestUri HTTP/1.0\r\n";
         $header	.= "Accept: */*\r\n";
         $header	.= "Referer: $this->referer\r\n";
         $header	.= "Accept-Language: zh-cn\r\n";
-        if(!empty($this->post)){
+        if(!empty($this->contType)){
+            $header	.= "Content-Type: $this->contType\r\n";
+        }elseif(!empty($this->post)){
             $header	.= "Content-Type: application/x-www-form-urlencoded\r\n";
         }
         $header	.= "User-Agent: ".$this->agent."\r\n";
@@ -177,16 +227,16 @@ class myHttp {
             $url = trim($match[1]);
             preg_match("/Set-Cookie:(.*?)$/im",$header,$match);
             $cookie	= (empty($match)) ? '' : $match[1];
-
             if($this->redirect <3){
                 $this->redirect++;
                 $this->result	= $this->get($url,'',$this->post,$cookie);
             }
-
             return $this->result;
         }elseif(!strstr($header,' 200 ')){//找不到域名或网址
             return false;
-        }else return 200;
+        }else{
+            return 200;
+        }
     }
 
 
@@ -228,21 +278,39 @@ class myHttp {
         $this->get		= $get;
         $this->post		= $post;
         $this->cookie	= $cookie;
-
         if(!$this->_analyzeUrl()) return false;
         $this->_assemblyHeader();
-
         stream_set_blocking($this->fop, 0);//非阻塞,无须等待
         stream_set_timeout($this->fop, $timeOut);
-        $res = fwrite($this->fop, $this->header);
 
-        if($timeOut > 0){
-            sleep($timeOut);
-        }else{
-            usleep(100);
+        fwrite($this->fop, $this->header);
+        $status = stream_get_meta_data($this->fop);
+        $res = false;
+        if(!$status['timed_out']){
+            //读取返回头信息
+            $startTime = microtime(true);
+            $h='';
+            $useTime = 0;
+            while(!feof($this->fop) && $useTime<= 1000){
+                if(($header = @fgets($this->fop)) && ($header == "\r\n" ||  $header == "\n") ){
+                    break;
+                }
+
+                $h .= $header;
+                if(strlen($h) >0){
+                    $res = true;
+                    break;
+                }
+
+                $useTime = (microtime(true) - $startTime) * pow(10,4);
+                if($useTime > 1000) break;
+
+                usleep(10);
+            }
         }
 
-        fclose($this->fop);
+        @fclose($this->fop);
+        unset($this->fop);
         return $res;
     }
 
@@ -263,57 +331,51 @@ class myHttp {
         $this->post		= $post;
         $this->cookie	= $cookie;
         $this->timeOut	= $timeOut;
-
         $getLength		= intval($getLength);
         $totalLength	= 0;//已经获取的长度
-
         if(!$this->_analyzeUrl()) return false;
         $this->_assemblyHeader();
-
         stream_set_blocking($this->fop, $this->block);
         stream_set_timeout($this->fop, $this->timeOut);
         fwrite($this->fop, $this->header);
+
+        //读取返回头信息
         $status = stream_get_meta_data($this->fop);
-
-        if(!$status['timed_out']){
-            $h='';
-            while(!feof($this->fop)){
-                if(($header = @fgets($this->fop)) && ($header == "\r\n" ||  $header == "\n")){
-                    break;
-                }
-                $h .= $header;
+        $h='';
+        while(!feof($this->fop) && !$status['timed_out']){
+            if(($header = @fgets($this->fop)) && ($header == "\r\n" ||  $header == "\n")){
+                break;
             }
-
-            $checkHttp	= $this->_checkReceiveHeader($h);
-            if($checkHttp!=200){return $checkHttp;}
-
-            $stop = false;
-            $return = '';
-            $this->gzip = false;
-            if(strstr($h,'gzip')) $this->gzip = true;
-            $readLen = ($this->limit == 0 || $this->limit > 128) ? 128 : $this->limit;//每次读取的长度
-            while(! ($stop || $status['timed_out'] || feof($this->fop))){
-                if($status['timed_out']) return false;
-                if($getLength>0 && $getLength <= $totalLength){//读取总字节长度限制
-                    break;
-                }
-
-                $data = fread($this->fop, $readLen);
-                if($data == ''){//有些服务器不行,须自行判断FOEF
-                    break;
-                }
-
-                $totalLength += strlen($data);
-                $return	.= $data;
-            }
-            @fclose($this->fop);
-            $this->result	= $this->gzip ? self::_gzdecode($return) : $return;
-            if($getLength>0) $this->result = substr($this->result, 0, $getLength);
-
-            return $this->result;
-        }else{
-            return false;
+            $h .= $header;
+            $status = stream_get_meta_data($this->fop);
         }
+        $checkHttp	= $this->_checkReceiveHeader($h);
+        if($checkHttp!=200) return $checkHttp;
+
+        //读内容
+        $return = '';
+        $this->gzip = false;
+        if(strstr($h,'gzip')) $this->gzip = true;
+        $readLen = ($this->limit == 0 || $this->limit > 128) ? 128 : $this->limit;//每次读取的长度
+        while(!feof($this->fop) && !$status['timed_out']){
+            if($getLength>0 && $getLength <= $totalLength){//读取总字节长度限制
+                break;
+            }
+
+            $data = fread($this->fop, $readLen);
+            if($data == ''){//有些服务器不行,须自行判断FOEF
+                break;
+            }
+            $totalLength += strlen($data);
+            $return	.= $data;
+            $status = stream_get_meta_data($this->fop);
+        }
+        if($status['timed_out']) return false;
+        @fclose($this->fop);
+        $this->result	= $this->gzip ? self::_gzdecode($return) : $return;
+        if($getLength>0) $this->result = substr($this->result, 0, $getLength);
+
+        return $this->result;
     }
 
 
@@ -327,15 +389,12 @@ class myHttp {
         $this->url		= $url;
         $this->timeOut	= $timeOut;
         ini_set('default_socket_timeout', $this->timeOut);//socket流的超时时间
-
         if(!$this->_analyzeUrl()){
             return false;
         }
-
         $header_arr = get_headers($this->url);
         list($version,$status_code,$msg) = explode(' ',$header_arr[0], 3);
         $this->result = array($version,$status_code,$msg);
-
         return $status_code;
     }
 
@@ -365,10 +424,9 @@ class myHttp {
      * @param array $cookie cookie数据
      * @return bool
      */
-    public function save($url, $savePath, $saveName='', $get=array(), $post=array(), $cookie=array()){
-        $data = $this->get($url, $get, $post, $cookie);
+    public function save($url, $savePath, $saveName='', $get=array(), $post=array(), $cookie=array(), $timeOut=30){
+        $data = $this->get($url, $get, $post, $cookie, $timeOut);
         if(empty($data)) return false;
-
         //自动文件名
         if(empty($saveName)){
             $urlFile = end(explode('/',$url));
@@ -392,14 +450,12 @@ class myHttp {
                     case 255216 : $fileType = 'jpg'; break;
                     default     : $fileType = 'unknown';break;
                 }
-
                 $saveName = date('YmdHis'). substr(md5($url), 8,4) .'.' .$fileType;
             }else{
                 $pathinfo = self::_pathinfo($url);
                 $saveName = $pathinfo['basename'];
             }
         }
-
         $fullSavePath = $savePath . DIRECTORY_SEPARATOR .$saveName;
         if(file_exists($fullSavePath)){
             return false;
