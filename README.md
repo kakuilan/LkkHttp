@@ -1,4 +1,4 @@
-myHttp asynHandle
+LkkHttp class
 ==========
 
 php的http类，其中的request异步并发请求支持apache和nginx。
