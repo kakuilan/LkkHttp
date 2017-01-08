@@ -1,19 +1,21 @@
 <?php
 /**
- * Created by PhpStorm.
- * User: lkk/lianq.net
- * Date: 2015/7/19
- * Time: 19:03
- * Desc: lkk`s http异步请求类
- * Version: 0.1
+ * Copyright (c) 2017 LKK/lianq.net All rights reserved
+ * User: kakuilan@163.com
+ * Date: 2017/1/2
+ * Time: 16:31
+ * Desc: -lkk http异步请求类
+ * Version: 0.2
  */
 
+
 class LkkHttp {
-    public		$param		= array();	//构造函数参数
+
+    public		$param		= [];	    //构造函数参数
     public		$url		= '';		//传入的完整请求url,包括"http://"
-    public 		$get		= array();	//传入的get数组,须是键值对
-    public		$post		= array();	//传入的post数组,须是键值对
-    public		$cookie		= array();	//传入的cookie数组,须是键值对
+    public 		$get		= [];	    //传入的get数组,须是键值对
+    public		$post		= [];	    //传入的post数组,须是键值对
+    public		$cookie		= [];	    //传入的cookie数组,须是键值对
     public		$timeOut	= 30;		//请求超时秒数
     public		$timeLimit	= 0;		//脚本执行时间限制
     public		$result		= '';		//获取到的数据
@@ -39,7 +41,7 @@ class LkkHttp {
      * randomAgent 0源客户端,1随机,其他为自定义
      *
      */
-    public function __construct($param=array('timeOut'=>30, 'timeLimit'=>0, 'randomAgent'=>1)) {
+    public function __construct($param=['timeOut'=>30, 'timeLimit'=>0, 'randomAgent'=>1]) {
         ignore_user_abort(true);//如果客户端断开连接,不会引起脚本abort
 
         if(!isset($param['timeOut'])) $param['timeOut'] = 30;
@@ -80,7 +82,7 @@ class LkkHttp {
      * @return string
      */
     private static function _buidQuery(array $data){
-        $res = array();
+        $res = [];
         foreach($data as $k=>$v){
             if(is_array($v)){
                 foreach($v as $k2=>$v2){
@@ -120,12 +122,12 @@ class LkkHttp {
         if(!empty($agent)) {
             $this->agent = $this->param['randomAgent'] = $agent;
         }else{
-            $agentArr = array(
-                'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:41.0) Gecko/20100101 Firefox/41.0',
-                'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0',
-                'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36',
+            $agentArr = [
+                'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:50.0) Gecko/20100101 Firefox/50.0',
+                'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.75 Safari/537.36',
                 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)',
-            );
+            ];
 
             if($this->param['randomAgent']==1) {
                 $ind = rand(0,3);
@@ -148,6 +150,7 @@ class LkkHttp {
     private function _analyzeUrl(){
         if(empty($this->url)) return false;
         $urlArray = parse_url($this->url);
+        $isHttps  = (bool)(strtolower($urlArray['scheme']) == 'https');
         if(!isset($urlArray['scheme']) || !isset($urlArray['host'])){
             return false;//URL非法
         }
@@ -164,7 +167,9 @@ class LkkHttp {
         $this->port			= $urlArray['port'];
         $this->referer		= empty($this->referer) ? $urlArray['scheme'] .'://'.$this->host .'/' : $this->referer;
         $this->requestUri	= $urlArray['path'] ? $urlArray['path'].($urlArray['query'] ? '?'.$urlArray['query'] : '') : '/';
-        $this->fop			= fsockopen($this->host, $this->port, $errno, $errstr, $this->timeOut);
+        $this->fop = $isHttps ?
+            fsockopen('ssl://'. $urlArray['host'], 443, $errno, $errstr, $this->timeOut) :
+            fsockopen($this->host, $this->port, $errno, $errstr, $this->timeOut);
         if(!$this->fop){
             $this->result	= "$errstr ($errno)<br />\n";
             return false;
@@ -177,17 +182,20 @@ class LkkHttp {
 
     /**
      * 拼装HTTP的header
-     * @return null
      */
     private function _assemblyHeader(){
         $method = empty($this->post) ? 'GET' : 'POST';
         $gzip = $this->gzip ? 'gzip, ' : '';
+
         //cookie数据
         if(is_array($this->cookie)){
             if(function_exists('http_build_cookie')){//需安装pecl_http
                 $this->cookie = http_build_cookie($this->cookie);
             }else $this->cookie = self::_buildCookie($this->cookie);
-        }else $this->cookie = strval($this->cookie);
+        }else{
+            $this->cookie = strval($this->cookie);
+        }
+
         //post数据
         if(is_array($this->post)){
             if(function_exists('http_build_query')){
@@ -218,13 +226,13 @@ class LkkHttp {
 
     /**
      * 返回状态检查,301、302重定向处理
-     * @param $header 头信息
+     * @param string $header 头信息
      * @return bool|int|string
      */
     private function _checkReceiveHeader($header){
         if(strstr($header,' 301 ') || strstr($header,' 302 ')){//重定向处理
-            preg_match("/Location:(.*?)$/im",$header,$match);
-            $url = trim($match[1]);
+            preg_match("/Location:(.*?)$/im", $header, $match);
+            $url = (empty($match)) ? '' : trim($match[1]);
             preg_match("/Set-Cookie:(.*?)$/im",$header,$match);
             $cookie	= (empty($match)) ? '' : $match[1];
             if($this->redirect <3){
@@ -242,7 +250,7 @@ class LkkHttp {
 
     /**
      * gzip解压
-     * @param $data 数据
+     * @param string $data 数据
      * @return string
      */
     private static function _gzdecode($data){
@@ -273,7 +281,7 @@ class LkkHttp {
      * @param int $timeOut 超时(秒)
      * @return bool|int
      */
-    public function request($url, $get=array(), $post=array(), $cookie=array(), $timeOut=0){
+    public function request($url, $get=[], $post=[], $cookie=[], $timeOut=0){
         $this->url		= $url;
         $this->get		= $get;
         $this->post		= $post;
@@ -325,7 +333,7 @@ class LkkHttp {
      * @param int $getLength 要获取的内容长度(字节)
      * @return bool|string
      */
-    public function get($url, $get=array(), $post=array(), $cookie=array(), $timeOut=30, $getLength=0){
+    public function get($url, $get=[], $post=[], $cookie=[], $timeOut=30, $getLength=0){
         $this->url		= $url;
         $this->get		= $get;
         $this->post		= $post;
@@ -405,6 +413,7 @@ class LkkHttp {
      * @return mixed
      */
     private static function _pathinfo($filepath) {
+        $res = '';
         preg_match('%^(.*?)[\\\\/]*(([^/\\\\]*?)(\.([^\.\\\\/]+?)|))[\\\\/\.]*$%im',$filepath,$m);
         if($m[1]) $res['dirname']=$m[1];
         if($m[2]) $res['basename']=$m[2];
@@ -424,7 +433,7 @@ class LkkHttp {
      * @param array $cookie cookie数据
      * @return bool
      */
-    public function save($url, $savePath, $saveName='', $get=array(), $post=array(), $cookie=array(), $timeOut=30){
+    public function save($url, $savePath, $saveName='', $get=[], $post=[], $cookie=[], $timeOut=30){
         $data = $this->get($url, $get, $post, $cookie, $timeOut);
         if(empty($data)) return false;
         //自动文件名
