@@ -408,6 +408,32 @@ class LkkHttp {
 
 
     /**
+     * 发送文件二进制流
+     * @param string $url
+     * @param string $filename 文件路径
+     * @param array $get
+     * @param array $cookie
+     * @param int $timeOut
+     * @param int $getLength
+     * @return bool|string
+     */
+    public function sendFileStream($url, $filename, $get=[], $cookie=[], $timeOut=30, $getLength=0) {
+        $res = false;
+
+        $handle = @fopen($filename, "rb");
+        if($handle) {
+            $contents = fread($handle, filesize($filename));
+            fclose($handle);
+            $this->setContentType('application/octet-stream');
+            $res = $this->get($url, $get, $contents, $cookie, $timeOut, $getLength);
+            $this->setContentType('');
+        }
+
+        return $res;
+    }
+
+
+    /**
      * 解析文件路径
      * @param string $filepath 文件路径
      * @return mixed
