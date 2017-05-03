@@ -278,7 +278,7 @@ class LkkHttp {
      * @param array $get get数据
      * @param array $post post数据
      * @param array $cookie cookie数据
-     * @param int $timeOut 超时(秒)
+     * @param int $timeOut 超时(毫秒)
      * @return bool|int
      */
     public function request($url, $get=[], $post=[], $cookie=[], $timeOut=0){
@@ -289,7 +289,7 @@ class LkkHttp {
         if(!$this->_analyzeUrl()) return false;
         $this->_assemblyHeader();
         stream_set_blocking($this->fop, 0);//非阻塞,无须等待
-        stream_set_timeout($this->fop, $timeOut);
+        stream_set_timeout($this->fop, 60);
 
         fwrite($this->fop, $this->header);
         $status = stream_get_meta_data($this->fop);
@@ -299,7 +299,8 @@ class LkkHttp {
             $startTime = microtime(true);
             $h='';
             $useTime = 0;
-            while(!feof($this->fop) && $useTime<= 1000){
+            $timeOut = ($timeOut>0) ? $timeOut * 1000 : 5000;
+            while(!feof($this->fop) && $useTime<= $timeOut){
                 if(($header = @fgets($this->fop)) && ($header == "\r\n" ||  $header == "\n") ){
                     break;
                 }
@@ -311,7 +312,7 @@ class LkkHttp {
                 }
 
                 $useTime = (microtime(true) - $startTime) * pow(10,4);
-                if($useTime > 1000) break;
+                if($useTime > $timeOut) break;
 
                 usleep(10);
             }
